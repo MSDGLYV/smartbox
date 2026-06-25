@@ -883,10 +883,6 @@ class _StorageImageState extends State<_StorageImage> {
   }
 
   Future<_LoadedImage> _loadStorageRef(Reference ref) async {
-    if (kIsWeb) {
-      return _LoadedImage.network(_firebaseMediaUrl(ref.fullPath));
-    }
-
     final result = await _fetchStorageImage(ref.fullPath);
     return _LoadedImage.bytes(
       result.bytes,
