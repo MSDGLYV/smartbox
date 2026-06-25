@@ -808,19 +808,33 @@ class _StorageImageState extends State<_StorageImage> {
         }
 
         if (image.bytes != null) {
-          return Image.memory(
-            image.bytes!,
-            key: ValueKey(image.copyValue),
-            fit: BoxFit.cover,
-            gaplessPlayback: true,
-            errorBuilder: (context, error, stackTrace) {
-              return _ImageErrorBox(
-                message: 'Image bytes could not be decoded.',
-                detail: error.toString(),
-                copyValue: image.copyValue,
-                cardScale: widget.cardScale,
-              );
-            },
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.memory(
+                image.bytes!,
+                key: ValueKey(image.copyValue),
+                fit: BoxFit.cover,
+                gaplessPlayback: true,
+                errorBuilder: (context, error, stackTrace) {
+                  return _ImageErrorBox(
+                    message: 'Image bytes could not be decoded.',
+                    detail: '${image.debugSummary}\n$error',
+                    copyValue: image.copyValue,
+                    cardScale: widget.cardScale,
+                  );
+                },
+              ),
+              Positioned(
+                left: 8 * widget.cardScale,
+                right: 8 * widget.cardScale,
+                bottom: 8 * widget.cardScale,
+                child: _ImageDebugChip(
+                  label: image.debugSummary,
+                  cardScale: widget.cardScale,
+                ),
+              ),
+            ],
           );
         }
 
@@ -869,15 +883,20 @@ class _StorageImageState extends State<_StorageImage> {
   }
 
   Future<_LoadedImage> _loadStorageRef(Reference ref) async {
-    final bytes = await _fetchStorageBytes(ref.fullPath);
-    return _LoadedImage.bytes(bytes, ref.fullPath);
+    final result = await _fetchStorageImage(ref.fullPath);
+    return _LoadedImage.bytes(
+      result.bytes,
+      ref.fullPath,
+      debugSummary: result.debugSummary,
+    );
   }
 
-  Future<Uint8List> _fetchStorageBytes(String path) async {
+  Future<_StorageFetchResult> _fetchStorageImage(String path) async {
+    final url = _firebaseMediaUrl(path);
     final token = await FirebaseAuth.instance.currentUser?.getIdToken();
     final response = await http
         .get(
-          Uri.parse(_firebaseMediaUrl(path)),
+          Uri.parse(url),
           headers: {
             if (token != null && token.isNotEmpty)
               'Authorization': 'Bearer $token',
@@ -890,28 +909,46 @@ class _StorageImageState extends State<_StorageImage> {
           ),
         );
 
+    final bytes = response.bodyBytes;
+    final contentType = response.headers['content-type'] ?? 'unknown';
+    final debugSummary = _debugSummary(
+      path: path,
+      url: url,
+      statusCode: response.statusCode,
+      contentType: contentType,
+      bytes: bytes,
+    );
+    debugPrint(debugSummary);
+
     if (response.statusCode != 200) {
       throw StateError(
-        'Firebase Storage returned HTTP ${response.statusCode} for $path: '
-        '${_bodyPreview(response.bodyBytes)}',
+        'Firebase Storage returned HTTP ${response.statusCode}.\n'
+        '$debugSummary\nBody preview: ${_bodyPreview(bytes)}',
       );
     }
 
-    final bytes = response.bodyBytes;
     if (bytes.length < 4) {
       throw StateError(
-        'Firebase Storage returned only ${bytes.length} bytes for $path.',
+        'Firebase Storage returned only ${bytes.length} bytes.\n'
+        debugSummary,
       );
     }
 
     if (bytes[0] != 0xFF || bytes[1] != 0xD8) {
       throw StateError(
-        'Downloaded ${bytes.length} bytes for $path, but it is not a JPEG. '
-        'First bytes: ${_hexPreview(bytes)}. Body: ${_bodyPreview(bytes)}',
+        'Downloaded bytes are not a JPEG. Expected start FF D8.\n'
+        '$debugSummary\nBody preview: ${_bodyPreview(bytes)}',
       );
     }
 
-    return bytes;
+    if (bytes[bytes.length - 2] != 0xFF || bytes[bytes.length - 1] != 0xD9) {
+      throw StateError(
+        'Downloaded bytes start like JPEG but are truncated or incomplete. '
+        'Expected end FF D9.\n$debugSummary',
+      );
+    }
+
+    return _StorageFetchResult(bytes: bytes, debugSummary: debugSummary);
   }
 
   static String _storagePathForSource(String source, String deviceId) {
@@ -955,23 +992,60 @@ class _StorageImageState extends State<_StorageImage> {
         '${Uri.encodeComponent(normalizedPath)}?alt=media';
   }
 
-  String _hexPreview(Uint8List bytes) {
+  String _debugSummary({
+    required String path,
+    required String url,
+    required int statusCode,
+    required String contentType,
+    required Uint8List bytes,
+  }) {
+    return 'Storage path: $path\n'
+        'Media URL: $url\n'
+        'HTTP: $statusCode\n'
+        'Content-Type: $contentType\n'
+        'Bytes: ${bytes.length}\n'
+        'Start: ${_hexPreview(bytes, count: 16)}\n'
+        'End: ${_tailHexPreview(bytes, count: 16)}';
+  }
+
+  String _hexPreview(Uint8List bytes, {int count = 16}) {
     return bytes
-        .take(12)
+        .take(count)
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join(' ');
+  }
+
+  String _tailHexPreview(Uint8List bytes, {int count = 16}) {
+    final start = math.max(0, bytes.length - count);
+    return bytes
+        .skip(start)
         .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
         .join(' ');
   }
 
   String _bodyPreview(Uint8List bytes) {
-    return utf8.decode(bytes.take(160).toList(), allowMalformed: true).trim();
+    return utf8.decode(bytes.take(240).toList(), allowMalformed: true).trim();
   }
 }
 
 class _LoadedImage {
-  const _LoadedImage._({this.bytes, this.url, required this.copyValue});
+  const _LoadedImage._({
+    this.bytes,
+    this.url,
+    required this.copyValue,
+    this.debugSummary = '',
+  });
 
-  factory _LoadedImage.bytes(Uint8List bytes, String path) {
-    return _LoadedImage._(bytes: bytes, copyValue: path);
+  factory _LoadedImage.bytes(
+    Uint8List bytes,
+    String path, {
+    required String debugSummary,
+  }) {
+    return _LoadedImage._(
+      bytes: bytes,
+      copyValue: path,
+      debugSummary: debugSummary,
+    );
   }
 
   factory _LoadedImage.network(String url) {
@@ -981,6 +1055,54 @@ class _LoadedImage {
   final Uint8List? bytes;
   final String? url;
   final String copyValue;
+  final String debugSummary;
+}
+
+class _StorageFetchResult {
+  const _StorageFetchResult({
+    required this.bytes,
+    required this.debugSummary,
+  });
+
+  final Uint8List bytes;
+  final String debugSummary;
+}
+
+class _ImageDebugChip extends StatelessWidget {
+  const _ImageDebugChip({
+    required this.label,
+    required this.cardScale,
+  });
+
+  final String label;
+  final double cardScale;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.64),
+        borderRadius: BorderRadius.circular(6 * cardScale),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: 8 * cardScale,
+          vertical: 5 * cardScale,
+        ),
+        child: Text(
+          label,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 10.5 * cardScale,
+            fontWeight: FontWeight.w600,
+            height: 1.2,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ImageErrorBox extends StatelessWidget {
@@ -1012,26 +1134,28 @@ class _ImageErrorBox extends StatelessWidget {
             SizedBox(height: 8 * cardScale),
             Text(
               detail,
-              maxLines: 3,
+              maxLines: 8,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: AppColors.muted,
-                fontSize: 11.5 * cardScale,
+                fontSize: 10.5 * cardScale,
                 fontWeight: FontWeight.w600,
               ),
             ),
             SizedBox(height: 8 * cardScale),
             TextButton.icon(
               onPressed: () async {
-                await Clipboard.setData(ClipboardData(text: copyValue));
+                await Clipboard.setData(
+                  ClipboardData(text: '$copyValue\n\n$detail'),
+                );
                 if (context.mounted) {
-                  showSnack(context, 'Image URL copied');
+                  showSnack(context, 'Image debug copied');
                 }
               },
               icon: Icon(Icons.copy_rounded, size: 16 * cardScale),
               label: Text(
-                'Copy URL',
+                'Copy debug',
                 style: TextStyle(fontSize: 12.5 * cardScale),
               ),
             ),
