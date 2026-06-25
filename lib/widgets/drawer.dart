@@ -328,12 +328,6 @@ class _DeviceStatusCard extends StatelessWidget {
                   compact: compact,
                   tiny: tiny,
                 ),
-                SizedBox(height: tiny ? 6 : (compact ? 8 : 13)),
-                _DrawerBatteryStatusLine(
-                  percentage: model.batteryPercent,
-                  compact: compact,
-                  tiny: tiny,
-                ),
               ],
             ),
           ),
@@ -349,53 +343,6 @@ class _DeviceStatusCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _DrawerBatteryStatusLine extends StatelessWidget {
-  const _DrawerBatteryStatusLine({
-    required this.percentage,
-    required this.compact,
-    required this.tiny,
-  });
-
-  final int percentage;
-  final bool compact;
-  final bool tiny;
-
-  @override
-  Widget build(BuildContext context) {
-    final iconWidth = tiny ? 24.0 : (compact ? 27.0 : 30.0);
-    final iconHeight = tiny ? 13.0 : (compact ? 14.5 : 16.0);
-
-    return Row(
-      children: [
-        SizedBox(
-          width: tiny ? 24 : (compact ? 27 : 30),
-          child: Center(
-            child: BatteryIcon(
-              percentage: percentage,
-              width: iconWidth,
-              height: iconHeight,
-            ),
-          ),
-        ),
-        SizedBox(width: tiny ? 7 : (compact ? 9 : 11)),
-        Expanded(
-          child: Text(
-            'Battery: $percentage%',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: batteryLevelColor(percentage),
-              fontSize: tiny ? 10 : (compact ? 11.5 : 12),
-              fontWeight: FontWeight.w800,
-              height: 1,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }

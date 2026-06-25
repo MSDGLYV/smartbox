@@ -51,7 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
               );
               final scale = math.min(widthScale, heightScale);
               final gridGap = _clampDouble(14 * scale, 12, 16);
-              final gridColumns = contentWidth >= 620 ? 4 : 2;
+              final gridColumns = contentWidth >= 620 ? 3 : 2;
               final tileWidth = math.max(
                 0.0,
                 (contentWidth - gridGap * (gridColumns - 1)) / gridColumns,
@@ -126,14 +126,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     DeviceEventsPanel(scale: scale),
                     SizedBox(height: 12 * scale),
                     DeviceImagePanel(scale: scale),
-                    SizedBox(height: 16 * scale),
-                    Row(
-                      children: [
-                        Expanded(child: PackageStatusCard(scale: scale)),
-                        SizedBox(width: 14 * scale),
-                        Expanded(child: BatteryStatusCard(scale: scale)),
-                      ],
-                    ),
                     SizedBox(height: 20 * scale),
                     SectionLabel('QUICK ACTIONS', scale: scale),
                     SizedBox(height: 12 * scale),
@@ -197,12 +189,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                       : 'Security mode enabled'),
                             );
                           },
-                        ),
-                        QuickActionTile(
-                          iconAsset: 'assets/images/otp-icon.png',
-                          label: 'OTP',
-                          scale: scale,
-                          onTap: () => openScreen(context, const OtpScreen()),
                         ),
                       ],
                     ),

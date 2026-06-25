@@ -688,7 +688,10 @@ class DeviceImagePanel extends StatelessWidget {
             _DeviceDetailRow(
               icon: Icons.folder_rounded,
               label: 'Storage path',
-              value: '${model.selectedDeviceId}/$imageSource',
+              value: _StorageImageState._storagePathForSource(
+                imageSource,
+                model.selectedDeviceId ?? '',
+              ),
               color: AppColors.blue,
               scale: cardScale,
             ),
@@ -807,37 +810,27 @@ class _StorageImageState extends State<_StorageImage> {
           );
         }
 
+        // Native path: decoded bytes straight from the Storage SDK.
         if (image.bytes != null) {
-          return Stack(
-            fit: StackFit.expand,
-            children: [
-              Image.memory(
-                image.bytes!,
-                key: ValueKey(image.copyValue),
-                fit: BoxFit.cover,
-                gaplessPlayback: true,
-                errorBuilder: (context, error, stackTrace) {
-                  return _ImageErrorBox(
-                    message: 'Image bytes could not be decoded.',
-                    detail: '${image.debugSummary}\n$error',
-                    copyValue: image.copyValue,
-                    cardScale: widget.cardScale,
-                  );
-                },
-              ),
-              Positioned(
-                left: 8 * widget.cardScale,
-                right: 8 * widget.cardScale,
-                bottom: 8 * widget.cardScale,
-                child: _ImageDebugChip(
-                  label: image.debugSummary,
-                  cardScale: widget.cardScale,
-                ),
-              ),
-            ],
+          return Image.memory(
+            image.bytes!,
+            key: ValueKey(image.copyValue),
+            fit: BoxFit.cover,
+            gaplessPlayback: true,
+            errorBuilder: (context, error, stackTrace) {
+              return _ImageErrorBox(
+                message: 'Image bytes could not be decoded.',
+                detail: '${image.debugSummary}\n$error',
+                copyValue: image.copyValue,
+                cardScale: widget.cardScale,
+              );
+            },
           );
         }
 
+        // Web path: download URL rendered through an <img> element
+        // (WebHtmlElementStrategy.prefer). Image elements are NOT subject to
+        // CORS for display, so no bucket CORS configuration is required.
         return Image.network(
           image.url!,
           key: ValueKey(image.url),
@@ -856,100 +849,66 @@ class _StorageImageState extends State<_StorageImage> {
     );
   }
 
-  Future<_LoadedImage> _loadImage(String rawSource, String deviceId) async {
+  // Resolve the raw RTDB value (download URL, gs:// URL, full object path, or
+  // bare filename) into a Storage reference, then load it through the SDK.
+  Future<_LoadedImage> _loadImage(String rawSource, String deviceId) {
     final source = rawSource.trim();
     if (source.isEmpty) {
       throw StateError('Image source is empty.');
     }
+    return _loadStorageRef(_resolveRef(source, deviceId));
+  }
 
+  Reference _resolveRef(String source, String deviceId) {
     final uri = Uri.tryParse(source);
+
+    // Full https download URL -> derive the object path, use the SDK.
     if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
       final storagePath = _storagePathFromDownloadUrl(uri);
       if (storagePath != null) {
-        return _loadStoragePath(storagePath);
+        return FirebaseStorage.instance.ref(storagePath);
       }
-      return _LoadedImage.network(source);
+      return FirebaseStorage.instance.refFromURL(source);
     }
 
+    // gs:// bucket URL.
     if (uri != null && uri.scheme == 'gs') {
-      return _loadStorageRef(FirebaseStorage.instance.refFromURL(source));
+      return FirebaseStorage.instance.refFromURL(source);
     }
 
-    return _loadStoragePath(_storagePathForSource(source, deviceId));
+    // Bare filename or object path written by the firmware
+    // (last_image_url = "<timestamp>.jpg", path = "<deviceUID>/<file>").
+    return FirebaseStorage.instance.ref(
+      _storagePathForSource(source, deviceId),
+    );
   }
 
-  Future<_LoadedImage> _loadStoragePath(String path) {
-    return _loadStorageRef(FirebaseStorage.instance.ref(path));
-  }
-
+  // Load through the Firebase Storage SDK instead of a raw ?alt=media fetch.
+  // The SDK handles auth, while web uses a tokenized download URL for <img>.
   Future<_LoadedImage> _loadStorageRef(Reference ref) async {
-    final result = await _fetchStorageImage(ref.fullPath);
+    final path = ref.fullPath;
+
+    if (kIsWeb) {
+      final downloadUrl = await ref.getDownloadURL();
+      return _LoadedImage.network(downloadUrl, copyValue: path);
+    }
+
+    final bytes = await ref.getData(_maxImageBytes);
+    if (bytes == null || bytes.isEmpty) {
+      throw StateError('Firebase Storage returned no data for $path.');
+    }
+
     return _LoadedImage.bytes(
-      result.bytes,
-      ref.fullPath,
-      debugSummary: result.debugSummary,
+      bytes,
+      path,
+      debugSummary:
+          'Storage path: $path\n'
+          'Bytes: ${bytes.length} (SDK getData)',
     );
   }
 
-  Future<_StorageFetchResult> _fetchStorageImage(String path) async {
-    final url = _firebaseMediaUrl(path);
-    final token = await FirebaseAuth.instance.currentUser?.getIdToken();
-    final response = await http
-        .get(
-          Uri.parse(url),
-          headers: {
-            if (token != null && token.isNotEmpty)
-              'Authorization': 'Bearer $token',
-          },
-        )
-        .timeout(
-          const Duration(seconds: 15),
-          onTimeout: () => throw TimeoutException(
-            'Firebase Storage HTTP request timed out for $path',
-          ),
-        );
-
-    final bytes = response.bodyBytes;
-    final contentType = response.headers['content-type'] ?? 'unknown';
-    final debugSummary = _debugSummary(
-      path: path,
-      url: url,
-      statusCode: response.statusCode,
-      contentType: contentType,
-      bytes: bytes,
-    );
-    debugPrint(debugSummary);
-
-    if (response.statusCode != 200) {
-      throw StateError(
-        'Firebase Storage returned HTTP ${response.statusCode}.\n'
-        '$debugSummary\nBody preview: ${_bodyPreview(bytes)}',
-      );
-    }
-
-    if (bytes.length < 4) {
-      throw StateError(
-        'Firebase Storage returned only ${bytes.length} bytes.\n'
-        '$debugSummary',
-      );
-    }
-
-    if (bytes[0] != 0xFF || bytes[1] != 0xD8) {
-      throw StateError(
-        'Downloaded bytes are not a JPEG. Expected start FF D8.\n'
-        '$debugSummary\nBody preview: ${_bodyPreview(bytes)}',
-      );
-    }
-
-    if (bytes[bytes.length - 2] != 0xFF || bytes[bytes.length - 1] != 0xD9) {
-      throw StateError(
-        'Downloaded bytes start like JPEG but are truncated or incomplete. '
-        'Expected end FF D9.\n$debugSummary',
-      );
-    }
-
-    return _StorageFetchResult(bytes: bytes, debugSummary: debugSummary);
-  }
+  // Firmware caps JPEGs at ~120 KB; 10 MB is a comfortable safety ceiling.
+  static const int _maxImageBytes = 10 * 1024 * 1024;
 
   static String _storagePathForSource(String source, String deviceId) {
     var path = source.trim();
@@ -981,51 +940,6 @@ class _StorageImageState extends State<_StorageImage> {
       segments.sublist(objectMarkerIndex + 1).join('/'),
     );
   }
-
-  String _firebaseMediaUrl(String path) {
-    final normalizedPath = path
-        .split('/')
-        .where((segment) => segment.isNotEmpty)
-        .join('/');
-    return 'https://firebasestorage.googleapis.com/v0/b/'
-        '${FirebaseStorage.instance.bucket}/o/'
-        '${Uri.encodeComponent(normalizedPath)}?alt=media';
-  }
-
-  String _debugSummary({
-    required String path,
-    required String url,
-    required int statusCode,
-    required String contentType,
-    required Uint8List bytes,
-  }) {
-    return 'Storage path: $path\n'
-        'Media URL: $url\n'
-        'HTTP: $statusCode\n'
-        'Content-Type: $contentType\n'
-        'Bytes: ${bytes.length}\n'
-        'Start: ${_hexPreview(bytes, count: 16)}\n'
-        'End: ${_tailHexPreview(bytes, count: 16)}';
-  }
-
-  String _hexPreview(Uint8List bytes, {int count = 16}) {
-    return bytes
-        .take(count)
-        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
-        .join(' ');
-  }
-
-  String _tailHexPreview(Uint8List bytes, {int count = 16}) {
-    final start = math.max(0, bytes.length - count);
-    return bytes
-        .skip(start)
-        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
-        .join(' ');
-  }
-
-  String _bodyPreview(Uint8List bytes) {
-    return utf8.decode(bytes.take(240).toList(), allowMalformed: true).trim();
-  }
 }
 
 class _LoadedImage {
@@ -1048,61 +962,14 @@ class _LoadedImage {
     );
   }
 
-  factory _LoadedImage.network(String url) {
-    return _LoadedImage._(url: url, copyValue: url);
+  factory _LoadedImage.network(String url, {String? copyValue}) {
+    return _LoadedImage._(url: url, copyValue: copyValue ?? url);
   }
 
   final Uint8List? bytes;
   final String? url;
   final String copyValue;
   final String debugSummary;
-}
-
-class _StorageFetchResult {
-  const _StorageFetchResult({
-    required this.bytes,
-    required this.debugSummary,
-  });
-
-  final Uint8List bytes;
-  final String debugSummary;
-}
-
-class _ImageDebugChip extends StatelessWidget {
-  const _ImageDebugChip({
-    required this.label,
-    required this.cardScale,
-  });
-
-  final String label;
-  final double cardScale;
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.64),
-        borderRadius: BorderRadius.circular(6 * cardScale),
-      ),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: 8 * cardScale,
-          vertical: 5 * cardScale,
-        ),
-        child: Text(
-          label,
-          maxLines: 3,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 10.5 * cardScale,
-            fontWeight: FontWeight.w600,
-            height: 1.2,
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _ImageErrorBox extends StatelessWidget {
@@ -1213,173 +1080,6 @@ class _DeviceDetailRow extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class PackageStatusCard extends StatelessWidget {
-  const PackageStatusCard({super.key, this.scale = 1});
-
-  final double scale;
-
-  @override
-  Widget build(BuildContext context) {
-    final model = SmartBoxScope.of(context);
-    final cardScale = _clampDouble(scale, 0.72, 1);
-    final packageLabel = model.hasPackage
-        ? 'Package\nInside'
-        : 'No Package\nInside';
-    final packageAsset = model.hasPackage
-        ? 'assets/images/package-icon.png'
-        : 'assets/images/package-unlocked-icon.png';
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(minHeight: 108 * cardScale),
-      child: SmartCard(
-        padding: EdgeInsets.symmetric(
-          horizontal: 10 * cardScale,
-          vertical: 16 * cardScale,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 58 * cardScale,
-              height: 64 * cardScale,
-              child: ClipRect(
-                child: Transform.scale(
-                  scale: model.hasPackage ? 1.85 : 1.0,
-                  child: Transform.translate(
-                    offset: Offset(model.hasPackage ? 4 * cardScale : 0, 0),
-                    child: PackageIcon(
-                      size: 64 * cardScale,
-                      asset: packageAsset,
-                      semanticLabel: packageLabel.replaceAll('\n', ' '),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(width: 10 * cardScale),
-            Expanded(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      packageLabel,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: AppColors.navy,
-                        fontSize: 18 * cardScale,
-                        fontWeight: FontWeight.w900,
-                        height: 1.2,
-                      ),
-                    ),
-                    SizedBox(height: 6 * cardScale),
-                    Text(
-                      model.lastSeen.isEmpty
-                          ? 'Just now'
-                          : 'Last seen: ${model.lastSeen}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 14 * cardScale,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class BatteryStatusCard extends StatelessWidget {
-  const BatteryStatusCard({super.key, this.scale = 1});
-
-  final double scale;
-
-  @override
-  Widget build(BuildContext context) {
-    final model = SmartBoxScope.of(context);
-    final cardScale = _clampDouble(scale, 0.72, 1);
-    final batteryPercent = model.batteryPercent;
-    final batteryColor = batteryLevelColor(batteryPercent);
-    final batteryLabel = batteryLevelLabel(batteryPercent);
-
-    return ConstrainedBox(
-      constraints: BoxConstraints(minHeight: 108 * cardScale),
-      child: SmartCard(
-        padding: EdgeInsets.symmetric(
-          horizontal: 10 * cardScale,
-          vertical: 16 * cardScale,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 62 * cardScale,
-              child: Center(
-                child: BatteryIcon(
-                  percentage: batteryPercent,
-                  width: 72 * cardScale,
-                  height: 38 * cardScale,
-                  quarterTurns: 3,
-                ),
-              ),
-            ),
-            SizedBox(width: 8 * cardScale),
-            Expanded(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Battery',
-                      style: TextStyle(
-                        color: AppColors.navy,
-                        fontSize: 18 * cardScale,
-                        fontWeight: FontWeight.w900,
-                        height: 1.1,
-                      ),
-                    ),
-                    Text(
-                      '$batteryPercent%',
-                      style: TextStyle(
-                        color: AppColors.navy,
-                        fontSize: 28 * cardScale,
-                        fontWeight: FontWeight.w900,
-                        height: 1.12,
-                      ),
-                    ),
-                    Text(
-                      batteryLabel,
-                      style: TextStyle(
-                        color: batteryColor,
-                        fontSize: 15 * cardScale,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

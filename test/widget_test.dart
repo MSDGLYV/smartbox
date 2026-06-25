@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:smartbox/app.dart';
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   test('alerts are driven by selected device events', () {
     final model = SmartBoxModel();
     addTearDown(model.dispose);
@@ -35,16 +40,6 @@ void main() {
     addTearDown(model.dispose);
 
     expect(model.alerts, isEmpty);
-  });
-
-  test('reset restores the shared default battery percentage', () {
-    final model = SmartBoxModel();
-    addTearDown(model.dispose);
-
-    model.batteryPercent = 80;
-    model.reset();
-
-    expect(model.batteryPercent, SmartBoxModel.defaultBatteryPercent);
   });
 
   testWidgets('shows the login screen', (WidgetTester tester) async {
@@ -203,7 +198,6 @@ void main() {
         ),
         MapEntry('HomeScreen', (model) => HomeScreen(onSignOut: () {})),
         MapEntry('LockControlScreen', (model) => const LockControlScreen()),
-        MapEntry('OtpScreen', (model) => const OtpScreen()),
         MapEntry(
           'SecurityAlertsScreen',
           (model) => const SecurityAlertsScreen(),
@@ -306,23 +300,6 @@ void main() {
     expect(find.text('Require OTP'), findsNothing);
   });
 
-  testWidgets('otp display uses shared case image', (
-    WidgetTester tester,
-  ) async {
-    final model = SmartBoxModel();
-    addTearDown(model.dispose);
-
-    await tester.pumpWidget(
-      SmartBoxScope(
-        model: model,
-        child: const MaterialApp(home: OtpScreen()),
-      ),
-    );
-
-    expect(find.bySemanticsLabel('Locked drop-off case'), findsOneWidget);
-    expect(find.text('Your OTP Code'), findsOneWidget);
-  });
-
   testWidgets('does not sign in with empty credentials', (
     WidgetTester tester,
   ) async {
@@ -380,6 +357,85 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Welcome back!'), findsNothing);
+  });
+
+  testWidgets('rejects passwords without both letters and numbers', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(const SmartDropOffApp());
+
+    await tester.tap(find.text('Create account'));
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(EditableText);
+    await tester.enterText(fields.at(0), 'Weak Password');
+    await tester.enterText(fields.at(1), 'weak@example.com');
+    await tester.enterText(fields.at(2), '05550102050');
+    await tester.enterText(fields.at(3), 'secure');
+    await tester.enterText(fields.at(4), 'secure');
+
+    await tester.tap(find.text('Create Account').last);
+    await tester.pump();
+
+    expect(
+      find.text(
+        'Password must be at least 6 characters and include a letter and a number.',
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('Welcome back!'), findsNothing);
+  });
+
+  testWidgets('remember me saves and restores the login email', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginScreen(
+          onSignIn: ({required String email, required String password}) => null,
+          onRegister:
+              ({
+                required String fullName,
+                required String email,
+                required String phone,
+                required String password,
+                required String confirmPassword,
+              }) => null,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(EditableText);
+    await tester.enterText(fields.at(0), 'remember@example.com');
+    await tester.enterText(fields.at(1), 'secure123');
+    await tester.tap(find.text('Remember me'));
+    await tester.tap(find.text('Sign In'));
+    await tester.pumpAndSettle();
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('login.rememberEnabled'), isTrue);
+    expect(prefs.getString('login.rememberEmail'), 'remember@example.com');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LoginScreen(
+          key: UniqueKey(),
+          onSignIn: ({required String email, required String password}) => null,
+          onRegister:
+              ({
+                required String fullName,
+                required String email,
+                required String phone,
+                required String password,
+                required String confirmPassword,
+              }) => null,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('remember@example.com'), findsOneWidget);
   });
 
   testWidgets('signs in with registered credentials after sign out', (

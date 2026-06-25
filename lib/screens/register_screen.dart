@@ -18,6 +18,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       TextEditingController();
   String? _errorText;
   bool _isSubmitting = false;
+  bool _passwordVisible = false;
+  bool _confirmPasswordVisible = false;
 
   @override
   void dispose() {
@@ -180,8 +182,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       controller: _passwordController,
                       hintText: 'Password',
                       icon: Icons.lock_outline_rounded,
-                      obscureText: true,
-                      suffixIcon: Icons.visibility_outlined,
+                      obscureText: !_passwordVisible,
+                      suffixIcon: _passwordVisible
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      suffixTooltip: _passwordVisible
+                          ? 'Hide password'
+                          : 'Show password',
+                      onSuffixIconPressed: () {
+                        setState(() {
+                          _passwordVisible = !_passwordVisible;
+                        });
+                      },
                       textInputAction: TextInputAction.next,
                       autofillHints: const [AutofillHints.newPassword],
                       fontSize: 15 * scale,
@@ -194,8 +206,18 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       controller: _confirmPasswordController,
                       hintText: 'Confirm password',
                       icon: Icons.lock_reset_rounded,
-                      obscureText: true,
-                      suffixIcon: Icons.visibility_outlined,
+                      obscureText: !_confirmPasswordVisible,
+                      suffixIcon: _confirmPasswordVisible
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      suffixTooltip: _confirmPasswordVisible
+                          ? 'Hide password'
+                          : 'Show password',
+                      onSuffixIconPressed: () {
+                        setState(() {
+                          _confirmPasswordVisible = !_confirmPasswordVisible;
+                        });
+                      },
                       textInputAction: TextInputAction.done,
                       autofillHints: const [AutofillHints.newPassword],
                       onSubmitted: (_) => _submit(),

@@ -15,10 +15,21 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
+  static const String _rememberEmailKey = 'login.rememberEmail';
+  static const String _rememberEnabledKey = 'login.rememberEnabled';
+
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   String? _errorText;
   bool _isSubmitting = false;
+  bool _rememberMe = false;
+  bool _passwordVisible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRememberedLogin();
+  }
 
   @override
   void dispose() {
@@ -33,6 +44,33 @@ class _LoginScreenState extends State<LoginScreen> {
         builder: (_) => RegisterScreen(onRegister: widget.onRegister),
       ),
     );
+  }
+
+  Future<void> _loadRememberedLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) {
+      return;
+    }
+
+    final rememberMe = prefs.getBool(_rememberEnabledKey) ?? false;
+    setState(() {
+      _rememberMe = rememberMe;
+      if (rememberMe) {
+        _emailController.text = prefs.getString(_rememberEmailKey) ?? '';
+      }
+    });
+  }
+
+  Future<void> _saveRememberedLogin() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (_rememberMe) {
+      await prefs.setBool(_rememberEnabledKey, true);
+      await prefs.setString(_rememberEmailKey, _emailController.text.trim());
+      return;
+    }
+
+    await prefs.setBool(_rememberEnabledKey, false);
+    await prefs.remove(_rememberEmailKey);
   }
 
   Future<void> _submit() async {
@@ -54,6 +92,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (!mounted) {
       return;
+    }
+
+    if (error == null) {
+      await _saveRememberedLogin();
+      if (!mounted) {
+        return;
+      }
     }
 
     setState(() {
@@ -153,8 +198,18 @@ class _LoginScreenState extends State<LoginScreen> {
                       controller: _passwordController,
                       hintText: 'Password',
                       icon: Icons.lock_outline_rounded,
-                      obscureText: true,
-                      suffixIcon: Icons.visibility_outlined,
+                      obscureText: !_passwordVisible,
+                      suffixIcon: _passwordVisible
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                      suffixTooltip: _passwordVisible
+                          ? 'Hide password'
+                          : 'Show password',
+                      onSuffixIconPressed: () {
+                        setState(() {
+                          _passwordVisible = !_passwordVisible;
+                        });
+                      },
                       textInputAction: TextInputAction.done,
                       autofillHints: const [AutofillHints.password],
                       onSubmitted: (_) => _submit(),
@@ -176,24 +231,61 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ],
                     SizedBox(height: 8 * scale),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: () {},
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppColors.navy,
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size(120 * scale, 32 * scale),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                        child: Text(
-                          'Forgot password?',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12 * scale,
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 28 * scale,
+                          height: 28 * scale,
+                          child: Checkbox(
+                            value: _rememberMe,
+                            activeColor: AppColors.navy,
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                            onChanged: (value) {
+                              setState(() {
+                                _rememberMe = value ?? false;
+                              });
+                            },
                           ),
                         ),
-                      ),
+                        SizedBox(width: 7 * scale),
+                        Expanded(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              setState(() {
+                                _rememberMe = !_rememberMe;
+                              });
+                            },
+                            child: Text(
+                              'Remember me',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: AppColors.navy,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12 * scale,
+                              ),
+                            ),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {},
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.navy,
+                            padding: EdgeInsets.zero,
+                            minimumSize: Size(120 * scale, 32 * scale),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: Text(
+                            'Forgot password?',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 12 * scale,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     SizedBox(height: 12 * scale),
                     PrimaryButton(

@@ -1,18 +1,12 @@
 part of '../app.dart';
 
 class SmartBoxModel extends ChangeNotifier {
-  static const int defaultBatteryPercent = 10;
-
   String userName = 'Emir';
   bool isLocked = true;
-  bool hasPackage = false;
   bool isOnline = true;
   bool lidLocked = true;
   bool securityMode = false;
   bool alarmTriggered = false;
-  int batteryPercent = defaultBatteryPercent;
-  String otpCode = '482 759';
-  String otpExpiresIn = '04:32';
   bool isDeviceLoading = false;
   bool isDeviceListLoading = false;
   bool hasDeviceNode = true;
@@ -159,14 +153,10 @@ class SmartBoxModel extends ChangeNotifier {
 
   void reset() {
     isLocked = true;
-    hasPackage = false;
     isOnline = true;
     lidLocked = true;
     securityMode = false;
     alarmTriggered = false;
-    batteryPercent = defaultBatteryPercent;
-    otpCode = '482 759';
-    otpExpiresIn = '04:32';
     isDeviceLoading = false;
     isDeviceListLoading = false;
     hasDeviceNode = true;

@@ -1,14 +1,14 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 part 'theme/app_colors.dart';
 part 'utils/layout.dart';
@@ -19,7 +19,6 @@ part 'screens/register_screen.dart';
 part 'screens/home_screen.dart';
 part 'screens/lock_control_screen.dart';
 part 'screens/security_alerts_screen.dart';
-part 'screens/otp_screen.dart';
 part 'screens/settings_screen.dart';
 part 'widgets/drawer.dart';
 part 'widgets/drawer_items.dart';
@@ -35,7 +34,6 @@ part 'widgets/detail_widgets.dart';
 part 'widgets/app_logo_mark.dart';
 part 'widgets/locker_illustrations.dart';
 part 'widgets/package_widgets.dart';
-part 'widgets/battery_widgets.dart';
 part 'services/firebase_device_repository.dart';
 part 'utils/navigation.dart';
 
@@ -193,7 +191,11 @@ class _SmartDropOffAppState extends State<SmartDropOffApp> {
     }
 
     if (cleanPassword.length < 6) {
-      return 'Password must be at least 6 characters.';
+      return _passwordRequirementMessage;
+    }
+
+    if (!_hasLetterAndNumber(cleanPassword)) {
+      return _passwordRequirementMessage;
     }
 
     if (cleanPassword != cleanConfirmPassword) {
@@ -454,10 +456,18 @@ class _SmartDropOffAppState extends State<SmartDropOffApp> {
       case 'network-request-failed':
         return 'Could not connect to Firebase. Try again.';
       case 'weak-password':
-        return 'Password must be at least 6 characters.';
+        return _passwordRequirementMessage;
       default:
         return error.message ?? 'Firebase authentication failed.';
     }
+  }
+
+  static const String _passwordRequirementMessage =
+      'Password must be at least 6 characters and include a letter and a number.';
+
+  bool _hasLetterAndNumber(String password) {
+    return RegExp(r'[A-Za-z]').hasMatch(password) &&
+        RegExp(r'\d').hasMatch(password);
   }
 
   String _firebaseAuthExceptionMessage(FirebaseAuthException error) {

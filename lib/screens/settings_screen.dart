@@ -92,7 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                           SizedBox(height: 6 * scale),
                                           Text(
                                             model.isOnline
-                                                ? 'Online - Battery ${model.batteryPercent}%'
+                                                ? 'Online'
                                                 : 'Offline',
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
