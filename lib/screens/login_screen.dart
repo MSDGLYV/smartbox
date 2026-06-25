@@ -18,6 +18,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   String? _errorText;
+  bool _isSubmitting = false;
 
   @override
   void dispose() {
@@ -34,15 +35,31 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  void _submit() {
-    final error = widget.onSignIn(
-      email: _emailController.text,
-      password: _passwordController.text,
+  Future<void> _submit() async {
+    if (_isSubmitting) {
+      return;
+    }
+
+    setState(() {
+      _errorText = null;
+      _isSubmitting = true;
+    });
+
+    final error = await Future.value(
+      widget.onSignIn(
+        email: _emailController.text,
+        password: _passwordController.text,
+      ),
     );
 
-    if (error != null && mounted) {
-      setState(() => _errorText = error);
+    if (!mounted) {
+      return;
     }
+
+    setState(() {
+      _errorText = error;
+      _isSubmitting = false;
+    });
   }
 
   @override
@@ -180,7 +197,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     SizedBox(height: 12 * scale),
                     PrimaryButton(
-                      label: 'Sign In',
+                      label: _isSubmitting ? 'Signing In...' : 'Sign In',
                       onPressed: _submit,
                       height: 58 * scale,
                       fontSize: 18 * scale,

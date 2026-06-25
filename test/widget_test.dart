@@ -4,35 +4,37 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smartbox/app.dart';
 
 void main() {
-  test('low battery alert is conditional and pinned first', () {
+  test('alerts are driven by selected device events', () {
     final model = SmartBoxModel();
     addTearDown(model.dispose);
 
-    model.batteryPercent = 10;
-
-    expect(model.alerts.first.title, 'Low battery warning');
-    expect(
-      model.alerts.map((alert) => alert.title),
-      isNot(contains('Box opened by courier')),
+    model.applyDeviceSnapshot(
+      SmartBoxDevice.fromMap(
+        id: 'box-1',
+        data: {
+          'info': {'online': true, 'last_seen': '2026-06-14T10:00:00Z'},
+          'lid': {'lid_state': 'closed', 'lid_locked': true},
+          'security': {'security_mode': true, 'alarm_triggered': false},
+          'events': {
+            'event-1': {
+              'timestamp': '2026-06-14T10:01:00Z',
+              'description': 'Box opened by courier',
+              'severity': 'info',
+            },
+          },
+        },
+      ),
     );
 
-    model.batteryPercent = 16;
-
-    expect(
-      model.alerts.map((alert) => alert.title),
-      isNot(contains('Low battery warning')),
-    );
+    expect(model.alerts.single.title, 'Box opened by courier');
+    expect(model.alerts.single.time, '2026-06-14T10:01:00Z');
   });
 
-  test('wrong otp alert includes attempt times', () {
+  test('empty device events produce an empty alerts list', () {
     final model = SmartBoxModel();
     addTearDown(model.dispose);
 
-    final wrongOtpAlert = model.alerts.firstWhere(
-      (alert) => alert.title == 'Wrong OTP entered',
-    );
-
-    expect(wrongOtpAlert.attemptTimes, ['02:02 AM', '02:01 AM', '01:59 AM']);
+    expect(model.alerts, isEmpty);
   });
 
   test('reset restores the shared default battery percentage', () {
@@ -43,15 +45,6 @@ void main() {
     model.reset();
 
     expect(model.batteryPercent, SmartBoxModel.defaultBatteryPercent);
-  });
-
-  test('delivery metadata has clean date label and weight', () {
-    final model = SmartBoxModel();
-    addTearDown(model.dispose);
-    final delivery = model.deliveries.first;
-
-    expect(delivery.deliveredAtLabel, 'May 24, 2026 - 10:30 AM');
-    expect(delivery.weight, '2.4 kg');
   });
 
   testWidgets('shows the login screen', (WidgetTester tester) async {
@@ -106,6 +99,11 @@ void main() {
       ),
     );
 
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(0, -520),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Unlock'));
     await tester.pumpAndSettle();
 
@@ -121,6 +119,11 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
 
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(0, -520),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Unlock'));
     await tester.pump();
 
@@ -130,6 +133,11 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
 
+    await tester.drag(
+      find.byType(SingleChildScrollView),
+      const Offset(0, -520),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Lock'));
     await tester.pumpAndSettle();
 
@@ -158,6 +166,12 @@ void main() {
         const Size(430, 932),
         const Size(768, 1024),
       ];
+      const sampleAlert = SecurityAlertItem(
+        title: 'Sample event',
+        message: 'Severity: info',
+        time: '2026-06-14T10:01:00Z',
+        severity: AlertSeverity.success,
+      );
       final screens = <MapEntry<String, Widget Function(SmartBoxModel)>>[
         MapEntry(
           'LoginScreen',
@@ -191,20 +205,12 @@ void main() {
         MapEntry('LockControlScreen', (model) => const LockControlScreen()),
         MapEntry('OtpScreen', (model) => const OtpScreen()),
         MapEntry(
-          'DeliveryHistoryScreen',
-          (model) => const DeliveryHistoryScreen(),
-        ),
-        MapEntry(
-          'DeliveryDetailsScreen',
-          (model) => DeliveryDetailsScreen(delivery: model.deliveries.first),
-        ),
-        MapEntry(
           'SecurityAlertsScreen',
           (model) => const SecurityAlertsScreen(),
         ),
         MapEntry(
           'AlertDetailsScreen',
-          (model) => AlertDetailsScreen(alert: model.alerts.first),
+          (model) => const AlertDetailsScreen(alert: sampleAlert),
         ),
         MapEntry('SettingsScreen', (model) => const SettingsScreen()),
       ];
@@ -279,48 +285,6 @@ void main() {
     await tester.tap(find.text('Show dialog'));
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('opens delivery details from delivery history', (
-    WidgetTester tester,
-  ) async {
-    final model = SmartBoxModel();
-    addTearDown(model.dispose);
-
-    await tester.pumpWidget(
-      SmartBoxScope(
-        model: model,
-        child: const MaterialApp(home: DeliveryHistoryScreen()),
-      ),
-    );
-
-    await tester.tap(find.text('Order #3'));
-    await tester.pumpAndSettle();
-
-    expect(tester.takeException(), isNull);
-    expect(find.text('Weight'), findsOneWidget);
-    expect(find.text('2.4 kg'), findsOneWidget);
-  });
-
-  testWidgets('delivery history cards show concise delivery summary', (
-    WidgetTester tester,
-  ) async {
-    final model = SmartBoxModel();
-    addTearDown(model.dispose);
-
-    await tester.pumpWidget(
-      SmartBoxScope(
-        model: model,
-        child: const MaterialApp(home: DeliveryHistoryScreen()),
-      ),
-    );
-
-    expect(find.text('Delivered'), findsWidgets);
-    expect(find.text('May 24, 2026'), findsOneWidget);
-    expect(find.text('View more details'), findsNWidgets(3));
-    expect(find.byTooltip('Filter'), findsNothing);
-    expect(find.textContaining('kg'), findsNothing);
-    expect(find.textContaining('OTP used'), findsNothing);
   });
 
   testWidgets('settings uses home lock art and only notification toggle', (

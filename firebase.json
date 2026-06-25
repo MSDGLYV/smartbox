@@ -1,0 +1,34 @@
+{
+  "database": {
+    "rules": "database.rules.json"
+  },
+  "storage": [
+    {
+      "bucket": "smart-drop-off-box.firebasestorage.app",
+      "rules": "storage.rules"
+    }
+  ],
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "smart-drop-off-box",
+          "appId": "1:1095281113336:android:604b7075e098e06ae6e30d",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "smart-drop-off-box",
+          "configurations": {
+            "android": "1:1095281113336:android:604b7075e098e06ae6e30d",
+            "ios": "1:1095281113336:ios:badcad7ed1184070e6e30d",
+            "macos": "1:1095281113336:ios:badcad7ed1184070e6e30d",
+            "web": "1:1095281113336:web:645fbc81323f543de6e30d",
+            "windows": "1:1095281113336:web:175e80e2a4bf5289e6e30d"
+          }
+        }
+      }
+    }
+  }
+}

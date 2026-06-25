@@ -2,8 +2,9 @@ part of '../app.dart';
 
 Future<void> showLockCommandDialog(
   BuildContext context,
-  SmartBoxModel model,
-) async {
+  SmartBoxModel model, {
+  LidCommandHandler? onSendLidCommand,
+}) async {
   final isUnlock = model.isLocked;
   await showDialog<void>(
     context: context,
@@ -22,14 +23,34 @@ Future<void> showLockCommandDialog(
         child: CommandConfirmCard(
           isUnlock: isUnlock,
           onCancel: () => Navigator.of(dialogContext).pop(),
-          onConfirm: () {
+          onConfirm: () async {
+            final sendCommand =
+                onSendLidCommand ?? SmartBoxScope.lidCommandHandlerOf(context);
+            final error = await Future.value(sendCommand?.call(open: isUnlock));
+            if (!context.mounted || !dialogContext.mounted) {
+              return;
+            }
+
+            if (error != null) {
+              Navigator.of(dialogContext).pop();
+              showSnack(context, error);
+              return;
+            }
+
+            if (sendCommand == null) {
+              if (isUnlock) {
+                model.unlock();
+              } else {
+                model.lock();
+              }
+            }
+
             if (isUnlock) {
-              model.unlock();
+              showSnack(context, 'Open command sent');
             } else {
-              model.lock();
+              showSnack(context, 'Close command sent');
             }
             Navigator.of(dialogContext).pop();
-            showSnack(context, isUnlock ? 'Box unlocked' : 'Box locked');
           },
         ),
       );
@@ -41,6 +62,7 @@ Future<void> showQuickActionLockCommand(
   BuildContext context,
   SmartBoxModel model, {
   required bool unlock,
+  LidCommandHandler? onSendLidCommand,
 }) async {
   if (unlock && !model.isLocked) {
     showSnack(context, 'Box is already unlocked');
@@ -52,7 +74,11 @@ Future<void> showQuickActionLockCommand(
     return;
   }
 
-  await showLockCommandDialog(context, model);
+  await showLockCommandDialog(
+    context,
+    model,
+    onSendLidCommand: onSendLidCommand,
+  );
 }
 
 class CommandConfirmCard extends StatelessWidget {
@@ -65,7 +91,7 @@ class CommandConfirmCard extends StatelessWidget {
 
   final bool isUnlock;
   final VoidCallback onCancel;
-  final VoidCallback onConfirm;
+  final FutureOr<void> Function() onConfirm;
 
   @override
   Widget build(BuildContext context) {
@@ -169,7 +195,7 @@ class CommandConfirmCard extends StatelessWidget {
                   Expanded(
                     child: PrimaryButton(
                       label: action,
-                      onPressed: onConfirm,
+                      onPressed: () => onConfirm(),
                       height: buttonHeight,
                       fontSize: 18 * scale,
                     ),

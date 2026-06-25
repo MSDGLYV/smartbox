@@ -46,6 +46,46 @@ class SecurityAlertsScreen extends StatelessWidget {
                     14,
                   );
 
+                  if (model.isDeviceLoading) {
+                    return Center(
+                      child: StatusLine(
+                        icon: Icons.sync_rounded,
+                        iconColor: AppColors.blue,
+                        label: 'Loading events...',
+                      ),
+                    );
+                  }
+
+                  if (model.deviceError != null) {
+                    return Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: horizontalPadding,
+                        ),
+                        child: StatusLine(
+                          icon: Icons.error_outline_rounded,
+                          iconColor: AppColors.danger,
+                          label: model.deviceError!,
+                        ),
+                      ),
+                    );
+                  }
+
+                  if (model.alerts.isEmpty) {
+                    return Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: horizontalPadding,
+                        ),
+                        child: StatusLine(
+                          icon: Icons.event_available_rounded,
+                          iconColor: AppColors.green,
+                          label: 'No device events yet.',
+                        ),
+                      ),
+                    );
+                  }
+
                   return ListView.separated(
                     padding: EdgeInsets.fromLTRB(
                       horizontalPadding,

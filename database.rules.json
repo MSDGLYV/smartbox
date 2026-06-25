@@ -1,0 +1,84 @@
+{
+  "rules": {
+    "devices": {
+      "$deviceId": {
+        ".read": "auth != null && (auth.uid === data.child('info/owner').val() || auth.uid === $deviceId || auth.token.admin === true)",
+        ".write": "auth != null && (auth.uid === data.child('info/owner').val() || auth.uid === $deviceId || auth.token.admin === true)",
+        "info": {
+          "last_seen": {
+            ".validate": "newData.isString()"
+          },
+          "online": {
+            ".validate": "newData.isBoolean()"
+          },
+          "image_request": {
+            ".validate": "newData.isBoolean()"
+          },
+          "owner": {
+            ".write": "auth != null && (newData.val() === auth.uid || auth.token.admin === true)",
+            ".validate": "newData.isString()"
+          }
+        },
+        "lid": {
+          "change_lid": {
+            ".write": "auth != null && (auth.uid === data.parent().parent().child('info/owner').val() || auth.uid === $deviceId || auth.token.admin === true)",
+            ".validate": "newData.isBoolean()"
+          },
+          "lid_state": {
+            ".write": "auth != null && (auth.uid === data.parent().parent().child('info/owner').val() || auth.uid === $deviceId || auth.token.admin === true)",
+            ".validate": "newData.isString() && (newData.val() === 'open' || newData.val() === 'closed')"
+          },
+          "lid_locked": {
+            ".write": "auth != null && (auth.uid === data.parent().parent().child('info/owner').val() || auth.uid === $deviceId || auth.token.admin === true)",
+            ".validate": "newData.isBoolean()"
+          }
+        },
+        "security": {
+          "security_mode": {
+            ".write": "auth != null && (auth.uid === data.parent().parent().child('info/owner').val() || auth.uid === $deviceId || auth.token.admin === true)",
+            ".validate": "newData.isBoolean()"
+          },
+          "alarm_triggered": {
+            ".write": "auth != null && (auth.uid === data.parent().parent().child('info/owner').val() || auth.uid === $deviceId || auth.token.admin === true)",
+            ".validate": "newData.isBoolean()"
+          }
+        },
+        "events": {
+          ".read": "auth != null && (auth.uid === data.parent().child('info/owner').val() || auth.uid === $deviceId || auth.token.admin === true)",
+          "$eventId": {
+            ".write": "auth != null && (auth.uid === data.parent().parent().child('info/owner').val() || auth.uid === $deviceId || auth.token.admin === true)",
+            ".validate": "newData.hasChildren(['timestamp','description','severity']) && newData.child('timestamp').isString() && newData.child('description').isString() && newData.child('severity').isString()"
+          }
+        }
+      }
+    },
+    "users": {
+      "$userId": {
+        ".read": "auth != null && auth.uid === $userId",
+        ".write": "auth != null && auth.uid === $userId",
+        "devices": {
+          "$deviceId": {
+            "alias": {
+              ".validate": "newData.isString()"
+            },
+            "addedAt": {
+              ".validate": "newData.isString()"
+            }
+          }
+        },
+        "email": {
+          ".validate": "newData.isString()"
+        },
+        "language": {
+          ".validate": "newData.isString()"
+        },
+        "name": {
+          ".validate": "newData.isString()"
+        },
+        "theme": {
+          ".validate": "newData.isString()"
+        }
+      }
+    }
+  }
+}

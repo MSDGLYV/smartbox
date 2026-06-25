@@ -7,73 +7,43 @@ class SmartBoxModel extends ChangeNotifier {
   bool isLocked = true;
   bool hasPackage = false;
   bool isOnline = true;
+  bool lidLocked = true;
+  bool securityMode = false;
+  bool alarmTriggered = false;
   int batteryPercent = defaultBatteryPercent;
   String otpCode = '482 759';
   String otpExpiresIn = '04:32';
+  bool isDeviceLoading = false;
+  bool isDeviceListLoading = false;
+  bool hasDeviceNode = true;
+  String? deviceError;
+  String lidState = 'closed';
+  String lastSeen = '';
+  String deviceStatus = 'Online';
+  String? activeDeviceId;
+  String? selectedDeviceId;
+  String imageStatus = 'idle';
+  String lastImageUrl = '';
+  String lastImageTime = '';
+  List<RegisteredDevice> registeredDevices = const [];
+  List<SecurityAlertItem> deviceEvents = const [];
 
-  final List<DeliveryItem> deliveries = const [
-    DeliveryItem(
-      orderNumber: 3,
-      status: 'Delivered',
-      date: 'May 24, 2026',
-      time: '10:30 AM',
-      note: 'View photo, OTP used, and details',
-      packageKind: PackageKind.cardboard,
-      otpUsed: '482 759',
-      weight: '2.4 kg',
-    ),
-    DeliveryItem(
-      orderNumber: 2,
-      status: 'Delivered',
-      date: 'May 22, 2026',
-      time: '01:45 PM',
-      note: 'View photo, OTP used, and details',
-      packageKind: PackageKind.mailer,
-      otpUsed: '174 908',
-      weight: '0.7 kg',
-    ),
-    DeliveryItem(
-      orderNumber: 1,
-      status: 'Delivered',
-      date: 'May 20, 2026',
-      time: '11:05 AM',
-      note: 'View photo, OTP used, and details',
-      packageKind: PackageKind.cardboardAlt,
-      otpUsed: '690 221',
-      weight: '1.8 kg',
-    ),
-  ];
+  List<SecurityAlertItem> get alerts => deviceEvents;
 
-  static const SecurityAlertItem _lowBatteryAlert = SecurityAlertItem(
-    title: 'Low battery warning',
-    message: 'Battery level is below 15%. Please recharge soon.',
-    time: 'Yesterday, 11:32 PM',
-    severity: AlertSeverity.battery,
-  );
-
-  final List<SecurityAlertItem> _alerts = const [
-    SecurityAlertItem(
-      title: 'Unauthorized access attempt',
-      message: 'Someone tried to access the box without authorization.',
-      time: '02:14 AM',
-      severity: AlertSeverity.critical,
-    ),
-    SecurityAlertItem(
-      title: 'Wrong OTP entered',
-      message: '3 failed attempts',
-      time: '02:02 AM',
-      severity: AlertSeverity.warning,
-      attemptTimes: ['02:02 AM', '02:01 AM', '01:59 AM'],
-    ),
-  ];
-
-  List<SecurityAlertItem> get alerts {
-    if (batteryPercent < 15) {
-      return [_lowBatteryAlert, ..._alerts];
+  RegisteredDevice? get selectedDevice {
+    final deviceId = selectedDeviceId;
+    if (deviceId == null) {
+      return null;
     }
-
-    return _alerts;
+    for (final device in registeredDevices) {
+      if (device.id == deviceId) {
+        return device;
+      }
+    }
+    return null;
   }
+
+  bool get hasRegisteredDevices => registeredDevices.isNotEmpty;
 
   void setUserName(String name) {
     final cleanName = name.trim();
@@ -92,13 +62,125 @@ class SmartBoxModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setDeviceLoading() {
+    isDeviceListLoading = true;
+    isDeviceLoading = true;
+    hasDeviceNode = true;
+    deviceError = null;
+    notifyListeners();
+  }
+
+  void setActiveDeviceLoading(String deviceId) {
+    activeDeviceId = deviceId;
+    isDeviceLoading = true;
+    hasDeviceNode = true;
+    deviceError = null;
+    notifyListeners();
+  }
+
+  void setDeviceError(String message) {
+    isDeviceListLoading = false;
+    isDeviceLoading = false;
+    deviceError = message;
+    notifyListeners();
+  }
+
+  void applyRegisteredDevices(List<RegisteredDevice> devices) {
+    isDeviceListLoading = false;
+    registeredDevices = devices;
+    if (devices.isEmpty) {
+      selectedDeviceId = null;
+      activeDeviceId = null;
+      isDeviceLoading = false;
+      hasDeviceNode = false;
+      deviceError = null;
+      deviceEvents = const [];
+      imageStatus = 'idle';
+      lastImageUrl = '';
+      lastImageTime = '';
+      lastSeen = '';
+      deviceStatus = 'No devices';
+      notifyListeners();
+      return;
+    }
+
+    final currentSelected = selectedDeviceId;
+    final selectedStillExists =
+        currentSelected != null &&
+        devices.any((device) => device.id == currentSelected);
+    selectedDeviceId = selectedStillExists ? currentSelected : devices.first.id;
+    hasDeviceNode = true;
+    deviceError = null;
+    notifyListeners();
+  }
+
+  void selectDevice(String deviceId) {
+    if (selectedDeviceId == deviceId) {
+      return;
+    }
+
+    selectedDeviceId = deviceId;
+    isDeviceLoading = true;
+    hasDeviceNode = true;
+    deviceError = null;
+    deviceEvents = const [];
+    imageStatus = 'idle';
+    lastImageUrl = '';
+    lastImageTime = '';
+    notifyListeners();
+  }
+
+  void applyDeviceSnapshot(SmartBoxDevice? device) {
+    isDeviceLoading = false;
+    if (device == null) {
+      hasDeviceNode = false;
+      deviceError = 'No device data found for the selected device.';
+      notifyListeners();
+      return;
+    }
+
+    activeDeviceId = device.id;
+    hasDeviceNode = true;
+    deviceError = null;
+    isLocked = device.isLocked;
+    lidLocked = device.lidLocked;
+    lidState = device.lidState;
+    lastSeen = device.lastSeen.isEmpty ? 'Unknown' : device.lastSeen;
+    isOnline = device.isOnline;
+    securityMode = device.securityMode;
+    alarmTriggered = device.alarmTriggered;
+    imageStatus = device.imageStatus.isEmpty ? 'idle' : device.imageStatus;
+    lastImageUrl = device.lastImageUrl;
+    lastImageTime = device.lastImageTime;
+    deviceStatus = device.isOnline ? 'Online' : 'Offline';
+    deviceEvents = device.events;
+    notifyListeners();
+  }
+
   void reset() {
     isLocked = true;
     hasPackage = false;
     isOnline = true;
+    lidLocked = true;
+    securityMode = false;
+    alarmTriggered = false;
     batteryPercent = defaultBatteryPercent;
     otpCode = '482 759';
     otpExpiresIn = '04:32';
+    isDeviceLoading = false;
+    isDeviceListLoading = false;
+    hasDeviceNode = true;
+    deviceError = null;
+    lidState = 'closed';
+    lastSeen = '';
+    deviceStatus = 'Online';
+    activeDeviceId = null;
+    selectedDeviceId = null;
+    imageStatus = 'idle';
+    lastImageUrl = '';
+    lastImageTime = '';
+    registeredDevices = const [];
+    deviceEvents = const [];
     notifyListeners();
   }
 }

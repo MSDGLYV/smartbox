@@ -1,9 +1,10 @@
 part of '../app.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.onSignOut});
+  const HomeScreen({super.key, required this.onSignOut, this.onSendLidCommand});
 
   final VoidCallback onSignOut;
+  final LidCommandHandler? onSendLidCommand;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -107,7 +108,24 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     SizedBox(height: 22 * scale),
+                    DeviceRegistrationPanel(scale: scale),
+                    SizedBox(height: 14 * scale),
+                    RegisteredDevicesPanel(scale: scale),
+                    SizedBox(height: 14 * scale),
                     DeviceHeroCard(scale: scale),
+                    if (model.isDeviceLoading ||
+                        model.deviceError != null ||
+                        model.lastSeen.isNotEmpty ||
+                        model.hasRegisteredDevices) ...[
+                      SizedBox(height: 12 * scale),
+                      DeviceStatusSummary(scale: scale),
+                    ],
+                    SizedBox(height: 12 * scale),
+                    DeviceDetailsPanel(scale: scale),
+                    SizedBox(height: 12 * scale),
+                    DeviceEventsPanel(scale: scale),
+                    SizedBox(height: 12 * scale),
+                    DeviceImagePanel(scale: scale),
                     SizedBox(height: 16 * scale),
                     Row(
                       children: [
@@ -139,6 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             context,
                             model,
                             unlock: true,
+                            onSendLidCommand: widget.onSendLidCommand,
                           ),
                         ),
                         QuickActionTile(
@@ -149,16 +168,35 @@ class _HomeScreenState extends State<HomeScreen> {
                             context,
                             model,
                             unlock: false,
+                            onSendLidCommand: widget.onSendLidCommand,
                           ),
                         ),
                         QuickActionTile(
-                          iconAsset: 'assets/images/delivery-history-icon.png',
-                          label: 'Delivery History',
+                          icon: model.securityMode
+                              ? Icons.shield_rounded
+                              : Icons.shield_outlined,
+                          label: model.securityMode
+                              ? 'Security On'
+                              : 'Security Off',
                           scale: scale,
-                          onTap: () => openScreen(
-                            context,
-                            const DeliveryHistoryScreen(),
-                          ),
+                          onTap: () async {
+                            final handler = SmartBoxScope.securityModeHandlerOf(
+                              context,
+                            );
+                            final error = await Future.value(
+                              handler?.call(enabled: !model.securityMode),
+                            );
+                            if (!context.mounted) {
+                              return;
+                            }
+                            showSnack(
+                              context,
+                              error ??
+                                  (model.securityMode
+                                      ? 'Security mode disabled'
+                                      : 'Security mode enabled'),
+                            );
+                          },
                         ),
                         QuickActionTile(
                           iconAsset: 'assets/images/otp-icon.png',

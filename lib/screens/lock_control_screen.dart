@@ -84,10 +84,7 @@ class LockControlScreen extends StatelessWidget {
                             ),
                           ),
                           SizedBox(height: statusGap),
-                          _StatusSection(
-                            isLocked: model.isLocked,
-                            scale: statusScale,
-                          ),
+                          _StatusSection(model: model, scale: statusScale),
                           const Spacer(),
                         ],
                       ),
@@ -326,9 +323,9 @@ class _OuterRing extends StatelessWidget {
 }
 
 class _StatusSection extends StatelessWidget {
-  const _StatusSection({required this.isLocked, required this.scale});
+  const _StatusSection({required this.model, required this.scale});
 
-  final bool isLocked;
+  final SmartBoxModel model;
   final double scale;
 
   @override
@@ -342,7 +339,9 @@ class _StatusSection extends StatelessWidget {
         Padding(
           padding: EdgeInsets.only(top: 2 * statusScale),
           child: Icon(
-            isLocked ? Icons.verified_user_rounded : Icons.lock_open_rounded,
+            model.isLocked
+                ? Icons.verified_user_rounded
+                : Icons.lock_open_rounded,
             color: const Color(0xFF19B96B),
             size: 36 * statusScale,
           ),
@@ -354,7 +353,7 @@ class _StatusSection extends StatelessWidget {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                isLocked ? 'Box is secured' : 'Box is open',
+                model.isLocked ? 'Box is secured' : 'Box is open',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -366,7 +365,9 @@ class _StatusSection extends StatelessWidget {
               ),
               SizedBox(height: 9 * statusScale),
               Text(
-                'Last updated just now',
+                model.isDeviceLoading
+                    ? 'Loading device data...'
+                    : 'Last seen ${model.lastSeen}',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(

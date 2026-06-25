@@ -59,7 +59,7 @@ class SmartDrawer extends StatelessWidget {
             final statusMinHeight = tiny ? 104.0 : (tight ? 124.0 : 140.0);
             final signOutHeight = tiny ? 46.0 : (tight ? 56.0 : 72.0);
 
-            final menuCount = 4;
+            final menuCount = 3;
             final dividerHeight = 3.0;
             final dividerCount = menuCount - 1;
             final dividerTotalHeight = dividerCount * dividerHeight;
@@ -141,19 +141,6 @@ class SmartDrawer extends StatelessWidget {
                             onTap: () => _closeAndOpen(
                               context,
                               const LockControlScreen(),
-                            ),
-                          ),
-                          const DrawerDivider(),
-                          DrawerItem(
-                            icon: Icons.assignment_outlined,
-                            label: 'Delivery History',
-                            height: itemHeight,
-                            iconSize: iconSize,
-                            fontSize: fontSize,
-                            iconGap: iconGap,
-                            onTap: () => _closeAndOpen(
-                              context,
-                              const DeliveryHistoryScreen(),
                             ),
                           ),
                           const DrawerDivider(),
